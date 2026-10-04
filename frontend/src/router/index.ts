@@ -22,6 +22,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '实寄封详情' }
   },
   {
+    path: '/rates',
+    name: 'rates',
+    component: () => import('@/pages/RateList.vue'),
+    meta: { title: '资费核验' }
+  },
+  {
     path: '/routes/:id',
     name: 'route-editor',
     component: () => import('@/pages/RouteEditor.vue'),

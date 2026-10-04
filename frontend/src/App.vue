@@ -3,18 +3,23 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCoverStore } from '@/stores/coverStore'
 import { usePostmarkStore } from '@/stores/postmarkStore'
+import { useRateStore } from '@/stores/rateStore'
 import { useRouteStore } from '@/stores/routeStore'
+import { useVerifyStore } from '@/stores/verifyStore'
 
 const current = useRoute()
 const router = useRouter()
 const postmarkStore = usePostmarkStore()
 const coverStore = useCoverStore()
 const routeStore = useRouteStore()
+const rateStore = useRateStore()
+const verifyStore = useVerifyStore()
 
 const activeMenu = computed(() => {
   const path = current.path
   if (path.startsWith('/covers')) return '/covers'
   if (path.startsWith('/postmarks')) return '/postmarks'
+  if (path.startsWith('/rates')) return '/rates'
   if (path.startsWith('/search')) return '/search'
   return ''
 })
@@ -35,7 +40,9 @@ const routeOptions = computed(() =>
 )
 
 onMounted(async () => {
-  await Promise.all([postmarkStore.load(), coverStore.load(), routeStore.load()])
+  await Promise.all([postmarkStore.load(), coverStore.load(), routeStore.load(), rateStore.load()])
+  // 资费清单就绪后再核验，保证结论按当前清单重算
+  await verifyStore.load()
 })
 </script>
 
@@ -52,6 +59,7 @@ onMounted(async () => {
       <el-menu :default-active="activeMenu" mode="horizontal" router :ellipsis="false" class="app-nav">
         <el-menu-item index="/postmarks">邮戳目录</el-menu-item>
         <el-menu-item index="/covers">实寄封目录</el-menu-item>
+        <el-menu-item index="/rates">资费核验</el-menu-item>
         <el-menu-item index="/search">综合检索</el-menu-item>
       </el-menu>
       <div class="app-aside">
@@ -66,6 +74,9 @@ onMounted(async () => {
         </el-select>
         <span class="app-stat">
           邮戳 {{ postmarkStore.total }} · 实寄封 {{ coverStore.total }} · 邮路 {{ routeStore.total }}
+          <template v-if="verifyStore.summary.pending">
+            · <span class="app-stat__warn">待复核 {{ verifyStore.summary.pending }}</span>
+          </template>
         </span>
       </div>
     </el-header>
@@ -133,6 +144,10 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--gb-muted);
   white-space: nowrap;
+}
+.app-stat__warn {
+  color: #b02a1e;
+  font-weight: 600;
 }
 .app-main {
   padding: 0;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Cover } from '@/types/cover'
+import type { TagType } from '@/types/rate'
 import { joinCn } from '@/utils/id'
 import ScarceTag from './ScarceTag.vue'
 
@@ -11,8 +12,10 @@ const props = withDefaults(
     /** 关联邮戳数，行内展示 */
     pmCount?: number
     active?: boolean
+    /** 欠资核验结论标签，未导入资费清单时为 null */
+    verify?: { label: string; type: TagType } | null
   }>(),
-  { stampCount: 0, pmCount: 0, active: false }
+  { stampCount: 0, pmCount: 0, active: false, verify: null }
 )
 
 const emit = defineEmits<{ select: [cover: Cover] }>()
@@ -36,6 +39,9 @@ function routeText(cover: Cover): string {
       <header class="cover-card__head">
         <span class="cover-card__no">{{ cover.coverNo }}</span>
         <span class="cover-card__tags">
+          <el-tag v-if="verify" size="small" :type="verify.type" effect="plain">
+            {{ verify.label }}
+          </el-tag>
           <el-tag v-if="cover.registered" size="small" type="danger" effect="plain">给据</el-tag>
           <ScarceTag :level="cover.conditionGrade" kind="grade" />
         </span>

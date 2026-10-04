@@ -9,7 +9,9 @@ import StampCard from '@/components/common/StampCard.vue'
 import { useCoverRoute } from '@/hooks/useCoverRoute'
 import { useCoverStore } from '@/stores/coverStore'
 import { usePostmarkStore } from '@/stores/postmarkStore'
+import { useRateStore } from '@/stores/rateStore'
 import { useRouteStore } from '@/stores/routeStore'
+import { useVerifyStore } from '@/stores/verifyStore'
 import type { Postmark } from '@/types/postmark'
 import type { TimelineNode } from '@/types/route'
 import type { StamplessEntry } from '@/types/stampentry'
@@ -19,7 +21,9 @@ import {
   createEmptyStampEntry
 } from '@/types/stampentry'
 import { CONDITION_GRADES } from '@/types/cover'
+import { VERIFY_STATUS_META } from '@/types/rate'
 import { loadAssets, saveAsset } from '@/utils/db'
+import { diffText } from '@/utils/rateMatch'
 import { nowIso } from '@/utils/id'
 
 const props = defineProps<{ id: string }>()
@@ -27,6 +31,8 @@ const router = useRouter()
 const coverStore = useCoverStore()
 const postmarkStore = usePostmarkStore()
 const routeStore = useRouteStore()
+const rateStore = useRateStore()
+const verifyStore = useVerifyStore()
 
 const coverId = computed<number | null>(() => {
   const n = Number(props.id)
@@ -47,10 +53,18 @@ const entryForm = reactive<StamplessEntry>(createEmptyStampEntry(0))
 
 const entries = computed<StamplessEntry[]>(() => coverStore.entriesOf(coverId.value))
 
+/** 欠资核验：实时结论，贴票或寄出日期一改即随 store 重算 */
+const verification = computed(() => (cover.value ? verifyStore.verify(cover.value) : null))
+const verifyMeta = computed(() =>
+  verification.value ? VERIFY_STATUS_META[verification.value.status] : null
+)
+
 onMounted(async () => {
   if (!coverStore.loaded) await coverStore.load()
   if (!postmarkStore.loaded) await postmarkStore.load()
   if (!routeStore.loaded) await routeStore.load()
+  if (!rateStore.loaded) await rateStore.load()
+  if (!verifyStore.loaded) await verifyStore.load()
   await loadAssetsForCover()
 })
 
@@ -196,6 +210,10 @@ function backToList(): void {
   void router.push('/covers')
 }
 
+function goRates(): void {
+  void router.push('/rates')
+}
+
 function openRoute(): void {
   if (route.value?.id != null) void router.push(`/routes/${route.value.id}`)
 }
@@ -253,6 +271,35 @@ function openRoute(): void {
           </el-radio-group>
           <ScarceTag :level="cover.conditionGrade" kind="grade" prefix="当前：" />
         </div>
+      </section>
+
+      <section v-if="verification && verifyMeta" class="gb-panel">
+        <div class="cover-detail__section-head">
+          <h2 class="gb-panel__title">欠资核验</h2>
+          <el-tag :type="verifyMeta.tagType" effect="plain">{{ verifyMeta.label }}</el-tag>
+        </div>
+        <dl class="gb-facts">
+          <div><dt>贴票合计</dt><dd>{{ verification.paid }}</dd></div>
+          <div>
+            <dt>应贴资费</dt>
+            <dd>
+              {{ verification.required == null ? '—' : `${verification.required}${verification.unit}` }}
+            </dd>
+          </div>
+          <div><dt>差额</dt><dd>{{ diffText(verification) }}</dd></div>
+          <div><dt>适用资费规则</dt><dd>{{ verification.ruleNo || '—' }}</dd></div>
+        </dl>
+        <p v-if="verification.status === 'pending'" class="cover-detail__warn">
+          该封落在两套资费规则的重叠区间，清单尚未对账选定，结论待复核。
+          <el-button size="small" link type="primary" @click="goRates">前往对账</el-button>
+        </p>
+        <p v-else-if="verification.status === 'unrated'" class="cover-detail__warn">
+          当期资费清单未覆盖该封的寄出日期 / 收件地 / 给据状态，请先导入资费清单。
+          <el-button size="small" link type="primary" @click="goRates">导入清单</el-button>
+        </p>
+        <p v-else-if="verification.status === 'nodate'" class="cover-detail__warn">
+          寄出日期待考，无法选定当期资费；补记寄出日期后结论会自动重算。
+        </p>
       </section>
 
       <section class="cover-detail__figures">

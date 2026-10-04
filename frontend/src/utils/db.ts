@@ -8,10 +8,11 @@ import type { Cover } from '@/types/cover'
 import type { PostalRoute } from '@/types/route'
 import type { StamplessEntry } from '@/types/stampentry'
 import type { AssetOwnerType, AssetSide, CatalogAsset } from '@/types/asset'
+import type { CoverVerification, RateBatch, RateRule } from '@/types/rate'
 
 export const DB_NAME = 'gbpostmark'
 /** 当前数据结构版本号，升级迁移写在下面对应的 version() 中 */
-export const DB_VERSION = 2
+export const DB_VERSION = 3
 
 export class GbPostmarkDatabase extends Dexie {
   postmarks!: Table<Postmark, number>
@@ -20,6 +21,12 @@ export class GbPostmarkDatabase extends Dexie {
   stampEntries!: Table<StamplessEntry, number>
   /** 戳样 / 封图原图，单独建表 */
   assets!: Table<CatalogAsset, number>
+  /** 资费规则（含在效、待选定、归档、作废） */
+  rateRules!: Table<RateRule, number>
+  /** 清单导入批次（原文留档，供失败 / 中断后修正重试） */
+  rateBatches!: Table<RateBatch, number>
+  /** 逐封欠资核验结论（按指纹与清单版本失效重算） */
+  verifications!: Table<CoverVerification, number>
 
   constructor() {
     super(DB_NAME)
@@ -73,6 +80,13 @@ export class GbPostmarkDatabase extends Dexie {
             if (typeof rt.totalDays !== 'number') rt.totalDays = 0
           })
       })
+
+    // v3：新增资费规则、导入批次、欠资核验结论三张表（纯新增，旧数据无需迁移）
+    this.version(DB_VERSION).stores({
+      rateRules: '++id, ruleNo, status, effectiveFrom, region, batchNo',
+      rateBatches: '++id, batchNo, status, createdAt',
+      verifications: '++id, coverId, status'
+    })
   }
 }
 
@@ -526,6 +540,127 @@ function seedStampEntries(): StamplessEntry[] {
   ]
 }
 
+/** 样例资费清单：清末—新中国初期国内资费，另留一对冲突规则演示「待选定 → 待复核」流程。 */
+function seedRateRules(): RateRule[] {
+  const base = (rule: RateRule): RateRule => rule
+  return [
+    base({
+      id: 1,
+      ruleNo: 'RL-0001',
+      eraName: '清末国内平信资费',
+      effectiveFrom: '1902-01-01',
+      effectiveTo: '1910-12-31',
+      region: '通用',
+      registered: 'no',
+      rate: 3,
+      unit: '分',
+      source: '研究会基础资费表',
+      batchNo: '',
+      status: 'active',
+      conflictWith: [],
+      conflictNote: '',
+      note: '蟠龙时期国内互寄平信。',
+      createdAt: SEED_TS,
+      updatedAt: SEED_TS
+    }),
+    base({
+      id: 2,
+      ruleNo: 'RL-0002',
+      eraName: '清末国内挂号资费',
+      effectiveFrom: '1902-01-01',
+      effectiveTo: '1910-12-31',
+      region: '通用',
+      registered: 'yes',
+      rate: 13,
+      unit: '分',
+      source: '研究会基础资费表',
+      batchNo: '',
+      status: 'active',
+      conflictWith: [],
+      conflictNote: '',
+      note: '平信 3 分加挂号费 10 分。',
+      createdAt: SEED_TS,
+      updatedAt: SEED_TS
+    }),
+    base({
+      id: 3,
+      ruleNo: 'RL-0003',
+      eraName: '民国前期国内平信资费',
+      effectiveFrom: '1912-01-01',
+      effectiveTo: '1931-12-31',
+      region: '通用',
+      registered: 'no',
+      rate: 6,
+      unit: '分',
+      source: '研究会基础资费表',
+      batchNo: '',
+      status: 'active',
+      conflictWith: [],
+      conflictNote: '',
+      note: '帆船票时期国内平信。',
+      createdAt: SEED_TS,
+      updatedAt: SEED_TS
+    }),
+    base({
+      id: 4,
+      ruleNo: 'RL-0004',
+      eraName: '民国前期国内挂号资费',
+      effectiveFrom: '1932-01-01',
+      effectiveTo: '1949-12-31',
+      region: '通用',
+      registered: 'yes',
+      rate: 16,
+      unit: '分',
+      source: '研究会基础资费表',
+      batchNo: '',
+      status: 'active',
+      conflictWith: [],
+      conflictNote: '',
+      note: '孙中山像票时期国内挂号。',
+      createdAt: SEED_TS,
+      updatedAt: SEED_TS
+    }),
+    base({
+      id: 5,
+      ruleNo: 'RL-0005',
+      eraName: '新中国初期国内平信资费（甲种清单）',
+      effectiveFrom: '1950-01-01',
+      effectiveTo: '1960-12-31',
+      region: '通用',
+      registered: 'no',
+      rate: 8,
+      unit: '分',
+      source: '研究会甲种清单',
+      batchNo: '',
+      status: 'active',
+      conflictWith: [],
+      conflictNote: '',
+      note: '甲种清单所载国内平信资费。',
+      createdAt: SEED_TS,
+      updatedAt: SEED_TS
+    }),
+    base({
+      id: 6,
+      ruleNo: 'RL-0006',
+      eraName: '新中国初期国内平信资费（乙种清单）',
+      effectiveFrom: '1955-03-01',
+      effectiveTo: '1965-12-31',
+      region: '通用',
+      registered: 'no',
+      rate: 10,
+      unit: '分',
+      source: '研究会乙种清单',
+      batchNo: '',
+      status: 'pending',
+      conflictWith: [5],
+      conflictNote: '乙种清单与在效 RL-0005 生效区间重叠且资费互异，待对账选定。',
+      note: '乙种清单所载，与甲种清单互异。',
+      createdAt: SEED_TS,
+      updatedAt: SEED_TS
+    })
+  ]
+}
+
 /** 首次运行写入样例数据，保证每个页面都有可编目的内容。 */
 export async function seedIfEmpty(): Promise<void> {
   const count = await db.postmarks.count()
@@ -534,10 +669,20 @@ export async function seedIfEmpty(): Promise<void> {
   const routes = seedRoutes()
   const covers = seedCovers()
   const entries = seedStampEntries()
-  await db.transaction('rw', db.postmarks, db.covers, db.routes, db.stampEntries, async () => {
-    await db.postmarks.bulkPut(postmarks)
-    await db.routes.bulkPut(routes)
-    await db.covers.bulkPut(covers)
-    await db.stampEntries.bulkPut(entries)
-  })
+  const rateRules = seedRateRules()
+  await db.transaction(
+    'rw',
+    db.postmarks,
+    db.covers,
+    db.routes,
+    db.stampEntries,
+    db.rateRules,
+    async () => {
+      await db.postmarks.bulkPut(postmarks)
+      await db.routes.bulkPut(routes)
+      await db.covers.bulkPut(covers)
+      await db.stampEntries.bulkPut(entries)
+      await db.rateRules.bulkPut(rateRules)
+    }
+  )
 }

@@ -8,10 +8,13 @@ import ScarceTag from '@/components/common/ScarceTag.vue'
 import { useCatalogFilter } from '@/hooks/useCatalogFilter'
 import { useCoverStore } from '@/stores/coverStore'
 import { usePostmarkStore } from '@/stores/postmarkStore'
+import { useRateStore } from '@/stores/rateStore'
 import { useRouteStore } from '@/stores/routeStore'
+import { useVerifyStore } from '@/stores/verifyStore'
 import type { ImagePayload } from '@/stores/postmarkStore'
 import type { Cover, FrankingItem } from '@/types/cover'
 import { CONDITION_GRADES, createEmptyCover } from '@/types/cover'
+import { VERIFY_STATUS_META, type TagType } from '@/types/rate'
 import { clearDraft, loadDraft, saveDraft } from '@/utils/draft'
 import { joinCn, nowIso, toNumber } from '@/utils/id'
 
@@ -19,9 +22,35 @@ const router = useRouter()
 const coverStore = useCoverStore()
 const postmarkStore = usePostmarkStore()
 const routeStore = useRouteStore()
+const rateStore = useRateStore()
+const verifyStore = useVerifyStore()
 
 const source = computed(() => coverStore.list)
 const { filters, filtered, activeCount, reset } = useCatalogFilter<Cover>('cover', source)
+
+/** 核验结论筛选（本地附加在统一过滤之后） */
+const verifyFilter = ref('')
+
+const displayed = computed(() => {
+  if (!verifyFilter.value) return filtered.value
+  return filtered.value.filter((c) => verifyStore.verify(c).status === verifyFilter.value)
+})
+
+/** 每封的核验标签；尚未导入任何资费规则时不显示 */
+const verifyMap = computed(() => {
+  const map = new Map<number, { label: string; type: TagType }>()
+  if (!rateStore.activeRules.length && !rateStore.pendingRules.length) return map
+  for (const cover of coverStore.list) {
+    if (cover.id == null) continue
+    const v = verifyStore.verify(cover)
+    const meta = VERIFY_STATUS_META[v.status]
+    map.set(cover.id, {
+      label: v.status === 'short' && v.diff != null ? `欠资 ${-v.diff}${v.unit}` : meta.label,
+      type: meta.tagType
+    })
+  }
+  return map
+})
 
 const viewMode = ref<'card' | 'table'>('card')
 const dialogVisible = ref(false)
@@ -34,6 +63,8 @@ onMounted(async () => {
   if (!coverStore.loaded) await coverStore.load()
   if (!postmarkStore.loaded) await postmarkStore.load()
   if (!routeStore.loaded) await routeStore.load()
+  if (!rateStore.loaded) await rateStore.load()
+  if (!verifyStore.loaded) await verifyStore.load()
 })
 
 watch(
@@ -172,7 +203,9 @@ function routeLabel(routeId: number | null): string {
       <div>
         <h1 class="gb-page__title">实寄封目录</h1>
         <p class="gb-page__subtitle">
-          共 {{ coverStore.total }} 封，其中给据邮件 {{ coverStore.registeredCount }} 封；按收寄地、年代、品相、是否给据筛选。
+          共 {{ coverStore.total }} 封，其中给据邮件 {{ coverStore.registeredCount }} 封；
+          欠资核验：相符 {{ verifyStore.summary.exact }} · 欠资 {{ verifyStore.summary.short }} · 溢付
+          {{ verifyStore.summary.over }} · 待复核 {{ verifyStore.summary.pending }}。
         </p>
       </div>
       <div class="cover-page__actions">
@@ -208,6 +241,17 @@ function routeLabel(routeId: number | null): string {
             <el-option label="仅平信" value="no" />
           </el-select>
         </el-form-item>
+        <el-form-item label="核验结论">
+          <el-select v-model="verifyFilter" style="width: 130px">
+            <el-option label="全部" value="" />
+            <el-option
+              v-for="(meta, key) in VERIFY_STATUS_META"
+              :key="key"
+              :label="meta.label"
+              :value="key"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="排序">
           <el-select v-model="filters.sortKey" style="width: 150px">
             <el-option label="最近更新" value="recent" />
@@ -222,20 +266,21 @@ function routeLabel(routeId: number | null): string {
       </el-form>
     </section>
 
-    <p v-if="!filtered.length" class="gb-empty">没有符合当前条件的实寄封，试试清空收寄地或放宽年代区间。</p>
+    <p v-if="!displayed.length" class="gb-empty">没有符合当前条件的实寄封，试试清空收寄地或放宽年代区间。</p>
 
     <div v-else-if="viewMode === 'card'" class="gb-grid gb-grid--wide">
       <CoverCard
-        v-for="cover in filtered"
+        v-for="cover in displayed"
         :key="cover.id"
         :cover="cover"
         :stamp-count="coverStore.frankingCount(cover)"
         :pm-count="coverStore.cancelCount(cover)"
+        :verify="verifyMap.get(cover.id ?? -1) ?? null"
         @select="openDetail"
       />
     </div>
 
-    <el-table v-else :data="filtered" border stripe @row-click="openDetail">
+    <el-table v-else :data="displayed" border stripe @row-click="openDetail">
       <el-table-column prop="coverNo" label="封号" width="110" />
       <el-table-column label="收寄地" min-width="170">
         <template #default="{ row }">{{ row.sentFrom }} → {{ row.sentTo }}</template>
@@ -261,6 +306,19 @@ function routeLabel(routeId: number | null): string {
       </el-table-column>
       <el-table-column label="给据" width="80">
         <template #default="{ row }">{{ row.registered ? '是' : '否' }}</template>
+      </el-table-column>
+      <el-table-column label="欠资核验" width="120" align="center">
+        <template #default="{ row }">
+          <el-tag
+            v-if="verifyMap.get(row.id ?? -1)"
+            size="small"
+            :type="verifyMap.get(row.id ?? -1)!.type"
+            effect="plain"
+          >
+            {{ verifyMap.get(row.id ?? -1)!.label }}
+          </el-tag>
+          <span v-else>—</span>
+        </template>
       </el-table-column>
       <el-table-column label="邮路" min-width="150">
         <template #default="{ row }">{{ routeLabel(row.routeId) }}</template>
