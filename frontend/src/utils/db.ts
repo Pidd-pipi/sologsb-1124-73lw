@@ -8,10 +8,11 @@ import type { Cover } from '@/types/cover'
 import type { PostalRoute } from '@/types/route'
 import type { StamplessEntry } from '@/types/stampentry'
 import type { AssetOwnerType, AssetSide, CatalogAsset } from '@/types/asset'
+import type { TariffBatch, TariffRule } from '@/types/tariff'
 
 export const DB_NAME = 'gbpostmark'
 /** 当前数据结构版本号，升级迁移写在下面对应的 version() 中 */
-export const DB_VERSION = 2
+export const DB_VERSION = 3
 
 export class GbPostmarkDatabase extends Dexie {
   postmarks!: Table<Postmark, number>
@@ -20,6 +21,10 @@ export class GbPostmarkDatabase extends Dexie {
   stampEntries!: Table<StamplessEntry, number>
   /** 戳样 / 封图原图，单独建表 */
   assets!: Table<CatalogAsset, number>
+  /** 资费规则 */
+  tariffRules!: Table<TariffRule, number>
+  /** 资费导入批次 */
+  tariffBatches!: Table<TariffBatch, number>
 
   constructor() {
     super(DB_NAME)
@@ -34,7 +39,7 @@ export class GbPostmarkDatabase extends Dexie {
     })
 
     // v2：原图拆到 assets 表单独存放，并补齐历史记录缺省字段（升级迁移）
-    this.version(DB_VERSION)
+    this.version(2)
       .stores({
         postmarks:
           '++id, pmNo, type, office, province, yearFrom, yearTo, scarceLevel, inkColor, bilingual',
@@ -73,6 +78,19 @@ export class GbPostmarkDatabase extends Dexie {
             if (typeof rt.totalDays !== 'number') rt.totalDays = 0
           })
       })
+
+    // v3：资费规则与导入批次表（新增表，无需迁移历史数据）
+    this.version(DB_VERSION).stores({
+      postmarks:
+        '++id, pmNo, type, office, province, yearFrom, yearTo, scarceLevel, inkColor, bilingual',
+      covers:
+        '++id, coverNo, sentFrom, sentTo, postDate, conditionGrade, registered, routeId, acquireFrom',
+      routes: '++id, routeNo, name, era, transport, totalDays',
+      stampEntries: '++id, coverId, stampName, variety, issueYear',
+      assets: '++id, ownerType, ownerId, side, [ownerType+ownerId]',
+      tariffRules: '++id, ruleNo, effectiveFrom, effectiveTo, batchNo',
+      tariffBatches: '++id, batchNo, status, importedAt'
+    })
   }
 }
 

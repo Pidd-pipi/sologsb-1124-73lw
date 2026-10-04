@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Cover } from '@/types/cover'
+import type { VerifyResult } from '@/types/tariff'
 import { joinCn } from '@/utils/id'
 import ScarceTag from './ScarceTag.vue'
+import TariffTag from './TariffTag.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -10,9 +12,11 @@ const props = withDefaults(
     stampCount?: number
     /** 关联邮戳数，行内展示 */
     pmCount?: number
+    /** 资费核验结果，行内展示 */
+    verifyResult?: VerifyResult | null
     active?: boolean
   }>(),
-  { stampCount: 0, pmCount: 0, active: false }
+  { stampCount: 0, pmCount: 0, verifyResult: null, active: false }
 )
 
 const emit = defineEmits<{ select: [cover: Cover] }>()
@@ -38,6 +42,7 @@ function routeText(cover: Cover): string {
         <span class="cover-card__tags">
           <el-tag v-if="cover.registered" size="small" type="danger" effect="plain">给据</el-tag>
           <ScarceTag :level="cover.conditionGrade" kind="grade" />
+          <TariffTag :result="verifyResult" />
         </span>
       </header>
       <p class="cover-card__route">{{ routeText(cover) }}</p>

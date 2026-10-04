@@ -34,6 +34,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/SearchView.vue'),
     meta: { title: '综合检索' }
   },
+  {
+    path: '/tariffs',
+    name: 'tariffs',
+    component: () => import('@/pages/TariffList.vue'),
+    meta: { title: '资费清单' }
+  },
   { path: '/:pathMatch(.*)*', redirect: '/postmarks' }
 ]
 

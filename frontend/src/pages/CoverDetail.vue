@@ -6,10 +6,13 @@ import type { UploadFile } from 'element-plus'
 import RouteTimeline from '@/components/common/RouteTimeline.vue'
 import ScarceTag from '@/components/common/ScarceTag.vue'
 import StampCard from '@/components/common/StampCard.vue'
+import TariffTag from '@/components/common/TariffTag.vue'
 import { useCoverRoute } from '@/hooks/useCoverRoute'
 import { useCoverStore } from '@/stores/coverStore'
 import { usePostmarkStore } from '@/stores/postmarkStore'
 import { useRouteStore } from '@/stores/routeStore'
+import { useTariffStore } from '@/stores/tariffStore'
+import { useTariffVerify } from '@/hooks/useTariffVerify'
 import type { Postmark } from '@/types/postmark'
 import type { TimelineNode } from '@/types/route'
 import type { StamplessEntry } from '@/types/stampentry'
@@ -27,6 +30,8 @@ const router = useRouter()
 const coverStore = useCoverStore()
 const postmarkStore = usePostmarkStore()
 const routeStore = useRouteStore()
+const tariffStore = useTariffStore()
+const { verifyOf } = useTariffVerify()
 
 const coverId = computed<number | null>(() => {
   const n = Number(props.id)
@@ -46,11 +51,13 @@ const activePostmark = ref<Postmark | null>(null)
 const entryForm = reactive<StamplessEntry>(createEmptyStampEntry(0))
 
 const entries = computed<StamplessEntry[]>(() => coverStore.entriesOf(coverId.value))
+const verifyResult = computed(() => verifyOf(cover.value))
 
 onMounted(async () => {
   if (!coverStore.loaded) await coverStore.load()
   if (!postmarkStore.loaded) await postmarkStore.load()
   if (!routeStore.loaded) await routeStore.load()
+  if (!tariffStore.loaded) await tariffStore.load()
   await loadAssetsForCover()
 })
 
@@ -255,6 +262,29 @@ function openRoute(): void {
         </div>
       </section>
 
+      <section class="gb-panel cover-detail__verify">
+        <h2 class="gb-panel__title">
+          资费核验
+          <TariffTag v-if="verifyResult" :result="verifyResult" show-shortfall />
+        </h2>
+        <dl v-if="verifyResult" class="gb-facts">
+          <div><dt>贴票合计</dt><dd>{{ verifyResult.stampTotal }} 元</dd></div>
+          <div><dt>适用资费</dt><dd>{{ verifyResult.tariff ?? '—' }} 元</dd></div>
+          <div v-if="verifyResult.status === 'underpaid'"><dt>短欠金额</dt><dd class="is-underpaid">{{ verifyResult.shortfall }} 元</dd></div>
+          <div v-if="verifyResult.rule"><dt>适用规则</dt><dd>{{ verifyResult.rule.ruleNo }}</dd></div>
+          <div v-if="verifyResult.rule"><dt>规则期间</dt><dd>{{ verifyResult.rule.effectiveFrom }} ~ {{ verifyResult.rule.effectiveTo || '至今' }}</dd></div>
+          <div v-if="verifyResult.rule"><dt>适用地区</dt><dd>{{ verifyResult.rule.regions.join('、') }}</dd></div>
+          <div><dt>核验说明</dt><dd>{{ verifyResult.reason }}</dd></div>
+        </dl>
+        <p v-else class="gb-empty">暂无核验结果。</p>
+        <p v-if="verifyResult?.status === 'pending'" class="cover-detail__verify-hint">
+          存在冲突资费规则待对账，请到「资费清单」页完成导入对账后自动重算。
+        </p>
+        <p v-if="verifyResult?.status === 'notariff'" class="cover-detail__verify-hint">
+          未找到适用资费，可到「资费清单」页导入或增补规则。
+        </p>
+      </section>
+
       <section class="cover-detail__figures">
         <div class="gb-figure">
           <img v-if="frontUrl" :src="frontUrl" :alt="`${cover.coverNo} 正面`" />
@@ -446,5 +476,22 @@ function openRoute(): void {
   max-width: 100%;
   border-radius: 8px;
   margin-bottom: 10px;
+}
+.cover-detail__verify .gb-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cover-detail__verify .is-underpaid {
+  color: #b02a1e;
+}
+.cover-detail__verify-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #b06f16;
+  background: #fdf5e6;
+  border: 1px solid #ecd3a5;
+  border-radius: 8px;
+  padding: 6px 10px;
 }
 </style>

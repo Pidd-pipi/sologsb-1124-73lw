@@ -4,17 +4,20 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCoverStore } from '@/stores/coverStore'
 import { usePostmarkStore } from '@/stores/postmarkStore'
 import { useRouteStore } from '@/stores/routeStore'
+import { useTariffStore } from '@/stores/tariffStore'
 
 const current = useRoute()
 const router = useRouter()
 const postmarkStore = usePostmarkStore()
 const coverStore = useCoverStore()
 const routeStore = useRouteStore()
+const tariffStore = useTariffStore()
 
 const activeMenu = computed(() => {
   const path = current.path
   if (path.startsWith('/covers')) return '/covers'
   if (path.startsWith('/postmarks')) return '/postmarks'
+  if (path.startsWith('/tariffs')) return '/tariffs'
   if (path.startsWith('/search')) return '/search'
   return ''
 })
@@ -35,7 +38,12 @@ const routeOptions = computed(() =>
 )
 
 onMounted(async () => {
-  await Promise.all([postmarkStore.load(), coverStore.load(), routeStore.load()])
+  await Promise.all([
+    postmarkStore.load(),
+    coverStore.load(),
+    routeStore.load(),
+    tariffStore.load()
+  ])
 })
 </script>
 
@@ -52,6 +60,7 @@ onMounted(async () => {
       <el-menu :default-active="activeMenu" mode="horizontal" router :ellipsis="false" class="app-nav">
         <el-menu-item index="/postmarks">邮戳目录</el-menu-item>
         <el-menu-item index="/covers">实寄封目录</el-menu-item>
+        <el-menu-item index="/tariffs">资费清单</el-menu-item>
         <el-menu-item index="/search">综合检索</el-menu-item>
       </el-menu>
       <div class="app-aside">
